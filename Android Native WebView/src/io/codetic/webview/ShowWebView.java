@@ -92,6 +92,25 @@ public class ShowWebView extends Activity {
         webView.setScrollBarStyle(WebView.SCROLLBARS_OUTSIDE_OVERLAY);
         webView.setScrollbarFadingEnabled(false);
         webView.getSettings().setBuiltInZoomControls(true);
+        		//Additional Webview Properties 
+        	        webView.getSettings().setJavaScriptCanOpenWindowsAutomatically(true);
+		        webView.getSettings().setDatabaseEnabled(true);
+		        webView.getSettings().setAllowUniversalAccessFromFileURLs(true);
+		        webView.getSettings().setAppCacheEnabled(true);
+		        webView.getSettings().setLayoutAlgorithm(webView.getSettings().getLayoutAlgorithm().NORMAL);
+		        webView.getSettings().setLoadWithOverviewMode(true);
+		        webView.getSettings().setUseWideViewPort(false);
+		        webView.setSoundEffectsEnabled(true);
+		        webView.setHorizontalFadingEdgeEnabled(false);
+		        webView.setKeepScreenOn(true);
+		        webView.setScrollbarFadingEnabled(true);
+		        webView.setVerticalFadingEdgeEnabled(false);
+	
+        
+        
+        
+        
+        
         */
          
         /*
