@@ -35,6 +35,9 @@ public class ShowWebView extends Activity {
     public void onCreate(Bundle savedInstanceState) {
          
         super.onCreate(savedInstanceState);
+        //This will not show title bar 
+        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
         setContentView(R.layout.show_web_view);
          
         //Get webview
@@ -59,6 +62,18 @@ public class ShowWebView extends Activity {
                 view.loadUrl(url);
                 return true;
             }
+            //If url has "tel:245678" , on clicking the number it will directly call to inbuilt calling feature of phone  
+            public boolean shouldOverrideUrlLoading(WebView view ,String url){
+			    	
+		 	    	if(url.startsWith("tel:")){
+			    		Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse(url));
+			    		startActivity(intent);
+			    	} else {
+			    		
+			    		view.loadUrl(url);
+			    		
+			    	}
+        }
         
             //Show loader on url load
             public void onLoadResource (WebView view, String url) {
