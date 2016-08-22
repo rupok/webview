@@ -43,7 +43,7 @@ public class ShowWebView extends Activity {
         //Get webview
         webView = (WebView) findViewById(R.id.webView1);
         if(haveNetworkConnection()){
-        startWebView("http://codetic.net/demo/webview-app/");
+        startWebView("http://fingerstore.com.br/");
         } else {
             webView.loadUrl("file:///android_asset/error.html");
            }
@@ -62,8 +62,8 @@ public class ShowWebView extends Activity {
                 view.loadUrl(url);
                 return true;
             }
-            //If url has "tel:245678" , on clicking the number it will directly call to inbuilt calling feature of phone  
-            public boolean shouldOverrideUrlLoading(WebView view ,String url){
+            //If url has "tel:245678", on clicking the number it will directly call to inbuilt calling feature of phone  
+            public boolean shouldOverrideUrlLoading(WebView view, String url){
 			    	
 		 	    	if(url.startsWith("tel:")){
 			    		Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse(url));
