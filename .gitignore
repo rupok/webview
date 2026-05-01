@@ -2,12 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
 build/
 dist/
 *.egg-info/
-.eggs/
 
 # Virtual envs
 .venv/
@@ -17,19 +14,13 @@ env/
 # Tooling
 .pytest_cache/
 .ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
 
 # IDE
 .vscode/
 .idea/
-*.swp
 
 # OS
 .DS_Store
-Thumbs.db
 
-# WebView runtime
-.webview-cache/
-*.webview.db
+# WebView output (when run inside this repo)
+/out/

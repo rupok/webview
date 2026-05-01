@@ -1,0 +1,77 @@
+name: Build Android app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "webview.json"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: webview build --{{ path }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install webview
+        run: pip install webview
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+{% if path == 'twa' %}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Bubblewrap
+        run: npm install -g @bubblewrap/cli
+{% endif %}
+
+      - name: Generate {{ path }} project
+        run: webview build --{{ path }} --output ./out
+{% if path == 'kotlin' %}
+      - name: Build APK
+        working-directory: ./out
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: {{ name_slug }}-apk
+          path: out/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+{% else %}
+      - name: Build TWA
+        working-directory: ./out
+        run: |
+          # Bubblewrap is interactive on first init; pre-seed defaults via env
+          # then build. See https://github.com/GoogleChromeLabs/bubblewrap.
+          yes "" | bubblewrap init --manifest=./twa-manifest.json --skipPwaValidation || true
+          bubblewrap build --skipPwaValidation
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: {{ name_slug }}-aab
+          path: |
+            out/app-release-bundle.aab
+            out/app-release-signed.apk
+          if-no-files-found: error
+{% endif %}

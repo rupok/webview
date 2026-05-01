@@ -1,146 +1,206 @@
 """Typer CLI.
 
-Entry point: ``webview`` (see pyproject.toml [project.scripts]).
-
 Commands:
-  fetch       URL → clean markdown
-  summarize   URL → summary (works with zero LLM via extractive backend)
-  ask         URL + question → answer
-  extract     URL + JSON schema → structured JSON
-  cache       inspect / clear the local cache
+
+  webview init <url>          Interactive: write webview.json
+  webview detect [<url>]      Probe a URL and recommend a build path
+  webview build [path opts]   Generate a project (kotlin / twa)
+  webview ci                  Write a GitHub Actions workflow
+  webview info                Show the active config
 """
 
 from __future__ import annotations
 
-import json
-import sys
+import re
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlparse
 
 import typer
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.table import Table
 
-from webview import cache as cache_mod
-from webview import view
-from webview.config import get_settings
+from webview import detect as detect_mod
+from webview.builders import (
+    build_kotlin_project,
+    build_twa_project,
+    write_github_actions_workflow,
+)
+from webview.builders.twa import TWAUnsupported
+from webview.config import CONFIG_FILENAME, AppConfig
 
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="Let AI view a website. Fetch, extract, and query web content.",
+    help="Turn your website into a real Android app. URL in, signed APK/AAB out.",
 )
-cache_app = typer.Typer(no_args_is_help=True, help="Inspect or manage the local page cache.")
-app.add_typer(cache_app, name="cache")
-
 console = Console()
 err_console = Console(stderr=True)
 
 
 @app.command()
-def fetch(
+def init(
     url: str,
-    render: Annotated[bool, typer.Option(help="Use Playwright for JS-rendered pages.")] = False,
-    refresh: Annotated[bool, typer.Option(help="Bypass the cache.")] = False,
-    plain: Annotated[bool, typer.Option(help="Plain markdown, no rich formatting.")] = False,
+    name: Annotated[str | None, typer.Option(help="Display name shown under the launcher icon.")] = None,
+    package: Annotated[str | None, typer.Option(help="Reverse-DNS package id, e.g. com.example.myapp")] = None,
+    theme_color: Annotated[str, typer.Option(help="Hex color, e.g. #1976D2")] = "#1976D2",
+    background_color: Annotated[str, typer.Option(help="Hex color for splash background")] = "#FFFFFF",
+    icon: Annotated[Path | None, typer.Option(help="Path to a square PNG (>=512px).")] = None,
+    output: Annotated[Path, typer.Option(help="Where to write webview.json.")] = Path("."),
 ) -> None:
-    """Fetch URL and print the cleaned markdown."""
-    page = view(url, render=render, refresh=refresh)
-    if plain or not sys.stdout.isatty():
-        sys.stdout.write(str(page) + "\n")
-    else:
-        console.print(Markdown(str(page)))
+    """Write a webview.json describing the app to build."""
+    inferred_name = name or _name_from_url(url)
+    inferred_package = package or _package_from_url(url)
+
+    config = AppConfig(
+        name=inferred_name,
+        url=url,
+        package=inferred_package,
+        theme_color=theme_color,
+        background_color=background_color,
+        icon=str(icon.resolve()) if icon else None,
+    )
+
+    output.mkdir(parents=True, exist_ok=True)
+    target = output / CONFIG_FILENAME
+    config.save(target)
+    console.print(f"[green]wrote {target}[/green]")
+    _print_config(config)
+    console.print()
+    console.print("Next: [bold]webview build[/bold] (auto-picks a path) or [bold]webview detect[/bold].")
 
 
 @app.command()
-def summarize(
-    url: str,
-    sentences: Annotated[int, typer.Option("--sentences", "-n", help="Maximum sentences.")] = 5,
-    render: Annotated[bool, typer.Option(help="Use Playwright for JS-rendered pages.")] = False,
-    refresh: Annotated[bool, typer.Option(help="Bypass the cache.")] = False,
+def detect(
+    url: Annotated[str | None, typer.Argument(help="URL to probe. Defaults to the URL in webview.json.")] = None,
 ) -> None:
-    """Summarize the page at URL."""
-    page = view(url, render=render, refresh=refresh)
-    summary = page.summarize(max_sentences=sentences)
-    _print_panel(page.title, summary, page.backend)
+    """Probe a URL and recommend a build path (twa or kotlin)."""
+    target_url = url or _load_config().url
+    result = detect_mod.detect(target_url)
+    table = Table(title=f"Probe: {target_url}", show_header=False)
+    table.add_row("Recommended path", f"[bold green]{result.recommended}[/bold green]")
+    table.add_row("HTTPS", str(result.is_https))
+    table.add_row("PWA manifest", str(result.has_manifest))
+    table.add_row("Service worker hint", str(result.has_service_worker_hint))
+    if result.manifest_url:
+        table.add_row("Manifest URL", result.manifest_url)
+    console.print(table)
+    for reason in result.reasons:
+        console.print(f"  · {reason}", style="dim")
 
 
 @app.command()
-def ask(
-    url: str,
-    question: str,
-    render: Annotated[bool, typer.Option(help="Use Playwright for JS-rendered pages.")] = False,
-    refresh: Annotated[bool, typer.Option(help="Bypass the cache.")] = False,
+def build(
+    kotlin: Annotated[bool, typer.Option("--kotlin", help="Force Kotlin WebView path.")] = False,
+    twa: Annotated[bool, typer.Option("--twa", help="Force TWA / Bubblewrap path.")] = False,
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output directory for the generated project.")] = Path("./out"),
 ) -> None:
-    """Ask a question about the page at URL."""
-    page = view(url, render=render, refresh=refresh)
-    answer = page.ask(question)
-    _print_panel(f"Q: {question}", answer, page.backend, subtitle=page.title)
-
-
-@app.command()
-def extract(
-    url: str,
-    schema: Annotated[Path, typer.Option("--schema", "-s", help="Path to JSON schema file.")],
-    render: Annotated[bool, typer.Option(help="Use Playwright for JS-rendered pages.")] = False,
-    refresh: Annotated[bool, typer.Option(help="Bypass the cache.")] = False,
-) -> None:
-    """Extract structured JSON conforming to a schema."""
-    if not schema.exists():
-        err_console.print(f"[red]schema file not found: {schema}[/red]")
+    """Generate a buildable Android project from webview.json."""
+    if kotlin and twa:
+        err_console.print("[red]choose one of --kotlin / --twa, not both[/red]")
         raise typer.Exit(2)
-    schema_doc = json.loads(schema.read_text())
-    page = view(url, render=render, refresh=refresh)
-    result = page.extract(schema_doc)
-    sys.stdout.write(json.dumps(result, indent=2) + "\n")
+
+    config = _load_config()
+
+    if not (kotlin or twa):
+        result = detect_mod.detect(config.url)
+        chosen = result.recommended
+        console.print(f"auto-detected: [bold]{chosen}[/bold]")
+        for reason in result.reasons:
+            console.print(f"  · {reason}", style="dim")
+    else:
+        chosen = "kotlin" if kotlin else "twa"
+
+    if chosen == "twa":
+        try:
+            twa_result = build_twa_project(config, output)
+        except TWAUnsupported as exc:
+            err_console.print(f"[red]TWA path unsupported:[/red] {exc}")
+            err_console.print("Use [bold]--kotlin[/bold] instead.")
+            raise typer.Exit(1) from None
+        _print_build_result("TWA", twa_result.output_dir, len(twa_result.files))
+        console.print(
+            Panel(
+                f"Next: [bold]{twa_result.bubblewrap_command}[/bold]\n\n"
+                "(Requires Node.js + JDK 17 + @bubblewrap/cli)",
+                title="Build the AAB",
+            )
+        )
+        return
+
+    kotlin_result = build_kotlin_project(config, output)
+    _print_build_result("Kotlin", kotlin_result.output_dir, len(kotlin_result.files))
+    console.print(
+        Panel(
+            f"Next: [bold]cd {kotlin_result.output_dir} && ./gradlew assembleRelease[/bold]\n\n"
+            "(Requires JDK 17 + Android SDK)",
+            title="Build the APK",
+        )
+    )
 
 
-@cache_app.command("stats")
-def cache_stats() -> None:
-    """Show the local cache stats."""
-    info = cache_mod.stats()
-    console.print(info)
-
-
-@cache_app.command("clear")
-def cache_clear() -> None:
-    """Clear the local cache."""
-    cache_mod.clear()
-    console.print("[green]cache cleared[/green]")
-
-
-@cache_app.command("path")
-def cache_path() -> None:
-    """Print the on-disk cache path."""
-    console.print(str(get_settings().cache_db_path()))
+@app.command()
+def ci(
+    path: Annotated[str, typer.Option(help="kotlin or twa")] = "kotlin",
+    output: Annotated[Path, typer.Option("--output", "-o", help="Repo root.")] = Path("."),
+) -> None:
+    """Write .github/workflows/build.yml so the APK is built in CI."""
+    if path not in ("kotlin", "twa"):
+        err_console.print(f"[red]path must be 'kotlin' or 'twa', got {path!r}[/red]")
+        raise typer.Exit(2)
+    config = _load_config()
+    workflow = write_github_actions_workflow(config, output, path=path)  # type: ignore[arg-type]
+    console.print(f"[green]wrote {workflow}[/green]")
+    console.print("Push to GitHub and the workflow will build the app on each commit.")
 
 
 @app.command()
 def info() -> None:
-    """Print active configuration."""
-    s = get_settings()
-    console.print(
-        {
-            "backend": s.backend,
-            "model": s.model,
-            "ollama_url": s.ollama_url,
-            "openai_base_url": s.openai_base_url,
-            "cache_dir": str(s.cache_dir),
-            "cache_ttl_seconds": s.cache_ttl_seconds,
-            "max_context_tokens": s.max_context_tokens,
-        }
-    )
+    """Show the active webview.json."""
+    _print_config(_load_config())
 
 
-def _print_panel(title: str, body: str, backend: str, *, subtitle: str | None = None) -> None:
-    panel = Panel(
-        body,
-        title=title,
-        subtitle=f"[dim]{subtitle or ''} · backend={backend}[/dim]",
-        border_style="cyan",
-    )
-    console.print(panel)
+def _load_config() -> AppConfig:
+    try:
+        return AppConfig.find_and_load()
+    except FileNotFoundError as exc:
+        err_console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from None
+
+
+def _print_config(config: AppConfig) -> None:
+    table = Table(title=CONFIG_FILENAME, show_header=False)
+    table.add_row("name", config.name)
+    table.add_row("url", config.url)
+    table.add_row("package", config.package)
+    table.add_row("version", f"{config.version_name} ({config.version_code})")
+    table.add_row("theme color", config.theme_color)
+    table.add_row("background", config.background_color)
+    table.add_row("min / target SDK", f"{config.min_sdk} / {config.target_sdk}")
+    table.add_row("icon", config.icon or "(generated letter tile)")
+    console.print(table)
+
+
+def _print_build_result(label: str, output_dir: Path, file_count: int) -> None:
+    console.print(f"[green]wrote {label} project: {output_dir} ({file_count} files)[/green]")
+
+
+def _name_from_url(url: str) -> str:
+    host = urlparse(url).netloc
+    base = host.removeprefix("www.").split(".")[0]
+    return base.replace("-", " ").title() or "WebView App"
+
+
+def _package_from_url(url: str) -> str:
+    host = urlparse(url).netloc.removeprefix("www.")
+    parts = [p for p in host.split(".") if p and p[0].isalpha()]
+    if len(parts) < 2:
+        parts = ["app", "webview", parts[0] if parts else "generated"]
+    parts = [re.sub(r"[^a-z0-9]", "", p.lower()) or "x" for p in parts]
+    if not parts[0][0].isalpha():
+        parts[0] = "app" + parts[0]
+    return ".".join(reversed(parts))
 
 
 if __name__ == "__main__":

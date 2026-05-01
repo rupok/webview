@@ -1,220 +1,173 @@
 # WebView
 
-> Let AI view a website.
-
-A small Python library and CLI for fetching web pages, extracting clean
-content, and answering questions about them — using **only free or
-self-hosted LLM backends**. Zero API keys required to get started.
+> Turn your website into a real Android app. URL in, signed APK/AAB out.
 
 ```bash
 pip install webview
-webview summarize https://en.wikipedia.org/wiki/Web_browser
+webview init https://your-site.com
+webview build
 ```
 
-That's it. No signup, no API key, no model download. The default backend
-is a pure-Python extractive summarizer, so WebView does something useful
-on a fresh machine before you've configured anything.
-
-When you're ready for real LLM answers, point it at a free backend
-(Ollama, Groq free tier, OpenRouter free models, LM Studio, …) by
-setting two environment variables. Same code, same CLI, same library.
+That's it. WebView picks the right path for your site, generates a complete
+buildable Android project, and walks you through producing a signed APK
+or Play Store-ready AAB.
 
 ---
 
-## What it does
+## Three paths, picked automatically
 
-```
-URL → fetch → extract clean markdown → chunk → cache → (LLM)
-```
+| Site looks like… | Path | What you get |
+|---|---|---|
+| HTTPS + valid PWA manifest | **TWA** (via [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap)) | A Trusted Web Activity AAB — Play Store-blessed, full Chrome under the hood |
+| Anything else | **Kotlin** WebView project | A modern Android Studio project with WebView, splash, pull-to-refresh, deep links |
+| You don't want a local toolchain | **GitHub Actions** | Push your `webview.json` and CI builds the APK for you |
 
-- **`webview fetch <url>`** — clean markdown of the main content (no nav,
-  ads, or footers)
-- **`webview summarize <url>`** — concise summary
-- **`webview ask <url> "question"`** — Q&A grounded in the page
-- **`webview extract <url> --schema schema.json`** — structured JSON
-  matching your schema
-- **`webview-mcp`** — exposes everything above as MCP tools, so Claude
-  Code / Claude Desktop can browse the web through WebView
-
-## Why
-
-The original WebView (2014–2015, archived at
-[`archive/eclipse-android`](https://github.com/rupok/webview/tree/archive/eclipse-android))
-was an Android template that wrapped a website inside a native app so
-**humans** could view a site as an app.
-
-A decade later, the inversion writes itself: **let AI view a website**.
-RAG pipelines, agents, research workflows, and your terminal all want
-the same thing the old WebView gave humans — a clean, predictable view
-of web content. That's what this rewrite delivers.
+`webview build` calls `webview detect` for you and chooses. Override
+with `--kotlin` or `--twa` if you know better.
 
 ---
 
-## Install
+## Quickstart
 
 ```bash
-pip install webview                    # core
-pip install 'webview[playwright]'      # add JS-rendered page support
-pip install 'webview[mcp]'             # add MCP server support
+pip install webview
+cd path/to/your/project
+
+webview init https://your-site.com \
+    --name "My App" \
+    --package com.yourdomain.myapp
+
+webview detect           # see why it picked the path it did
+webview build            # generate the project under ./out
 ```
 
-Python 3.11+. Works offline (after `pip install`) with the default
-extractive backend.
+Then either:
 
----
-
-## Backends
-
-Pick one with `WEBVIEW_BACKEND`. **All of them are free.**
-
-| Backend         | What it is                                  | Setup cost    | When to use |
-|-----------------|---------------------------------------------|---------------|-------------|
-| `extractive`    | Pure-Python TextRank + BM25 (default)       | None          | Quick starts, offline, deterministic |
-| `ollama`        | Local [Ollama](https://ollama.com) daemon   | Local model   | Best privacy & quality, you have a GPU or patience |
-| `openai-compat` | Any OpenAI-compatible API                   | Free API key  | Free cloud tiers (Groq, OpenRouter, Together) or local servers (LM Studio, vLLM, llama.cpp) |
-| `hf`            | Hugging Face Inference API                  | Free HF token | Hugging Face's free serverless inference |
-
-### Quickest real-LLM setup: Ollama
-
+**Local build** (need JDK 17 + Android SDK):
 ```bash
-# Install Ollama from https://ollama.com, then:
-ollama pull llama3.2
-export WEBVIEW_BACKEND=ollama
-export WEBVIEW_MODEL=llama3.2
-
-webview ask https://example.com "what is this page about?"
+cd out && ./gradlew assembleRelease
+# APK: app/build/outputs/apk/release/app-release.apk
 ```
 
-### Cloud free tier: Groq
-
+**CI build** (no local toolchain):
 ```bash
-export WEBVIEW_BACKEND=openai-compat
-export WEBVIEW_OPENAI_BASE_URL=https://api.groq.com/openai/v1
-export WEBVIEW_OPENAI_API_KEY=gsk_...      # free key from console.groq.com
-export WEBVIEW_MODEL=llama-3.3-70b-versatile
-
-webview ask https://example.com "what is this page about?"
-```
-
-### Cloud free tier: OpenRouter (free models)
-
-```bash
-export WEBVIEW_BACKEND=openai-compat
-export WEBVIEW_OPENAI_BASE_URL=https://openrouter.ai/api/v1
-export WEBVIEW_OPENAI_API_KEY=sk-or-...
-export WEBVIEW_MODEL=meta-llama/llama-3.2-3b-instruct:free
-```
-
-### Local OpenAI-compatible server: LM Studio / vLLM / llama.cpp
-
-```bash
-export WEBVIEW_BACKEND=openai-compat
-export WEBVIEW_OPENAI_BASE_URL=http://localhost:1234/v1   # LM Studio default
-export WEBVIEW_OPENAI_API_KEY=sk-no-key-required
-export WEBVIEW_MODEL=local-model
-```
-
-### Hugging Face Inference API
-
-```bash
-export WEBVIEW_BACKEND=hf
-export WEBVIEW_HF_TOKEN=hf_...     # free at huggingface.co/settings/tokens
-export WEBVIEW_MODEL=meta-llama/Llama-3.2-3B-Instruct
+webview ci               # writes .github/workflows/build.yml
+git add . && git commit -m "ship app" && git push
+# Download the APK from the Actions run's artifacts
 ```
 
 ---
 
-## Library usage
+## What you get
 
-```python
-from webview import view
+### Kotlin path — modern WebView app
 
-page = view("https://en.wikipedia.org/wiki/Web_browser")
+A clean Android Studio project (Gradle KTS, AndroidX, Kotlin 2.0, Material 3):
 
-print(page.title)
-print(page.summarize(max_sentences=3))
-print(page.ask("when was the first web browser released?"))
+- `WebView` with JavaScript, DOM storage, mediaplayback enabled
+- Pull-to-refresh
+- Edge-to-edge layout, status-bar tinting, AndroidX SplashScreen
+- WebView state survives rotation
+- `tel:`, `mailto:`, `sms:` go to the system handler
+- Off-domain links open in the user's real browser (configurable)
+- `https://your-host/*` app-link intent filter
+- Adaptive launcher icon (auto-generated from a single PNG, or a letter
+  tile from your app name if you supply nothing)
+- Network security config locked to your domain
 
-data = page.extract({
-    "type": "object",
-    "properties": {
-        "title":          {"type": "string"},
-        "first_released": {"type": "string"},
-        "creators":       {"type": "array"},
-    },
-})
+### TWA path — full Chrome inside an app
+
+For PWAs, generates a Bubblewrap-ready directory:
+
+```
+out/
+├── twa-manifest.json    ← consumed by `bubblewrap init`
+├── icon.png             ← 512x512 launcher source
+├── README.md            ← step-by-step
+└── webview.json         ← copy of your config
 ```
 
-The `Page` object is fully cached — repeated calls reuse the parsed and
-chunked content from a local SQLite store.
+Then `bubblewrap init --manifest=./twa-manifest.json && bubblewrap build`
+gives you `app-release-bundle.aab` (Play Store) and
+`app-release-signed.apk` (sideload).
+
+### CI path — no local toolchain needed
+
+`webview ci` writes `.github/workflows/build.yml`. On push to `main`
+(or via "Run workflow"), GitHub Actions:
+
+1. Installs Python, JDK 17, Gradle, (Node + Bubblewrap if `--twa`).
+2. Runs `webview build`.
+3. Uploads the APK/AAB as a workflow artifact you can download from
+   the Actions tab.
+
+You only need a GitHub account.
 
 ---
 
-## MCP server
+## `webview.json`
 
-```bash
-pip install 'webview[mcp]'
-```
-
-Then add to your Claude Code or Claude Desktop config:
+Everything is driven by a single file:
 
 ```json
 {
-  "mcpServers": {
-    "webview": {"command": "webview-mcp"}
-  }
+  "name": "My App",
+  "url": "https://your-site.com/",
+  "package": "com.yourdomain.myapp",
+  "version_name": "1.0.0",
+  "version_code": 1,
+  "theme_color": "#1976D2",
+  "background_color": "#FFFFFF",
+  "min_sdk": 24,
+  "target_sdk": 35,
+  "icon": "./logo.png",
+  "orientation": "unspecified",
+  "allow_external_links": false
 }
 ```
 
-Now your assistant can call `fetch_page`, `summarize_page`, `ask_page`,
-and `extract_page` directly.
+`webview init` writes a sensible default; edit it and re-run `webview build`.
 
 ---
 
-## Configuration reference
+## CLI reference
 
-All settings are environment variables prefixed with `WEBVIEW_`.
-
-| Variable                         | Default                              | Notes |
-|----------------------------------|--------------------------------------|-------|
-| `WEBVIEW_BACKEND`                | `extractive`                         | `extractive` / `ollama` / `openai-compat` / `hf` |
-| `WEBVIEW_MODEL`                  | `llama3.2`                           | Model name (backend-specific) |
-| `WEBVIEW_OLLAMA_URL`             | `http://localhost:11434`             | Ollama daemon URL |
-| `WEBVIEW_OPENAI_BASE_URL`        | `http://localhost:8080/v1`           | OpenAI-compatible server base URL |
-| `WEBVIEW_OPENAI_API_KEY`         | `sk-no-key-required`                 | Bearer token |
-| `WEBVIEW_HF_TOKEN`               | (empty)                              | Hugging Face token |
-| `WEBVIEW_FETCH_TIMEOUT`          | `20.0`                               | Seconds |
-| `WEBVIEW_FETCH_MAX_BYTES`        | `5000000`                            | Cap on fetched body size |
-| `WEBVIEW_CACHE_DIR`              | OS user cache dir                    | SQLite cache location |
-| `WEBVIEW_CACHE_TTL_SECONDS`      | `86400`                              | One day |
-| `WEBVIEW_CHUNK_TOKENS`           | `1200`                               | Target tokens per chunk |
-| `WEBVIEW_MAX_CONTEXT_TOKENS`     | `8000`                               | Token budget for LLM context |
-
-`webview info` prints the active config.
-`webview cache stats|clear|path` manages the cache.
+```
+webview init <url>         Write webview.json
+webview detect [<url>]     Probe a URL and recommend a build path
+webview build              Generate a project (auto-picks path)
+  --kotlin                   Force Kotlin WebView path
+  --twa                      Force TWA / Bubblewrap path
+  --output ./out             Where to write the project
+webview ci                 Write .github/workflows/build.yml
+  --path kotlin|twa
+webview info               Show the active webview.json
+```
 
 ---
 
-## How it works
+## When to use what
 
-1. **Fetch** — `httpx` for static pages; optional `playwright` for SPAs.
-2. **Extract** — `trafilatura` strips nav/ads/footers and returns markdown.
-3. **Chunk** — token-aware paragraph-respecting splitter with overlap.
-4. **Cache** — SQLite, keyed by URL, with TTL. Skips fetch + parse on hits.
-5. **LLM** — for `ask`/`extract`, BM25 picks the most relevant chunks
-   for the query, then the chosen backend answers using only those chunks.
+| Your situation | Use |
+|---|---|
+| Your site is already a PWA (manifest + service worker) | `--twa`. Best UX, Play Store-blessed. |
+| HTTPS site, no PWA, want a Play Store app | `--kotlin`. Add native value (push, share, offline) before submitting. |
+| HTTP / intranet / staging site | `--kotlin`. TWA requires HTTPS. |
+| You don't have JDK + Android SDK and don't want to install them | `webview ci`. Build in the cloud. |
+| You just want users to install your site, no Play Store | Honestly? Tell them "Add to Home Screen" from Chrome. WebView is for when you specifically need a sideloadable APK or Play Store presence. |
 
 ---
 
 ## Project history
 
-| Version | Era         | Stack                      | What it did |
-|---------|-------------|----------------------------|-------------|
-| v1      | 2014–2015   | Eclipse + Java + ADT       | Wrapped a website in an Android WebView app |
-| v2      | 2026–       | Python + AI backends       | Lets AI view a website |
+| Version | Era       | Stack                       | What it did |
+|---------|-----------|-----------------------------|-------------|
+| **v1**  | 2014–2015 | Eclipse + Java + ADT        | Wrapped a website in an Android app |
+| **v2**  | 2026–     | Python CLI + Kotlin/TWA/CI  | Same idea, modern toolchain, signed AAB |
 
-v1 lives at branch [`archive/eclipse-android`](https://github.com/rupok/webview/tree/archive/eclipse-android)
-and tag `legacy/v1.0-eclipse-2015`. The git history is preserved.
+v1 is preserved at branch
+[`archive/eclipse-android`](https://github.com/rupok/webview/tree/archive/eclipse-android)
+and tag `legacy/v1.0-eclipse-2015`. The git history is intact.
 
 ---
 
@@ -224,9 +177,8 @@ GPL-2.0-or-later (carried over from v1).
 
 ## Contributing
 
-Issues and PRs welcome. Run tests with:
-
 ```bash
 pip install -e '.[dev]'
 pytest
+ruff check src/ tests/
 ```

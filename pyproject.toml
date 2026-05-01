@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "webview"
 version = "2.0.0"
-description = "Let AI view a website. Fetch, extract, and query web content with pluggable open-source LLM backends."
+description = "Turn your website into a real Android app. URL in, signed APK/AAB out."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-2.0-or-later"
 authors = [{ name = "WebView Contributors" }]
-keywords = ["web", "scraping", "llm", "rag", "ollama", "ai", "readability", "mcp"]
+keywords = ["android", "webview", "twa", "pwa", "apk", "aab", "bubblewrap", "kotlin"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -18,45 +18,39 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Topic :: Internet :: WWW/HTTP",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Build Tools",
 ]
 dependencies = [
     "httpx>=0.27",
-    "trafilatura>=1.12",
     "typer>=0.12",
     "rich>=13.7",
     "pydantic>=2.7",
-    "pydantic-settings>=2.4",
-    "platformdirs>=4.2",
-    "tiktoken>=0.7",
-    "sumy>=0.11",
-    "rank-bm25>=0.2.2",
-    "nltk>=3.8",
+    "jinja2>=3.1",
+    "pillow>=10.3",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]
-playwright = ["playwright>=1.45"]
-mcp = ["mcp>=1.0"]
 dev = [
     "pytest>=8.2",
-    "pytest-asyncio>=0.23",
     "respx>=0.21",
     "ruff>=0.5",
 ]
 
 [project.scripts]
 webview = "webview.cli:app"
-webview-mcp = "webview.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/rupok/webview"
 Repository = "https://github.com/rupok/webview"
 Issues = "https://github.com/rupok/webview/issues"
-"Legacy (v1, Eclipse Android)" = "https://github.com/rupok/webview/tree/archive/eclipse-android"
+"Legacy v1 (Eclipse, 2014-2015)" = "https://github.com/rupok/webview/tree/archive/eclipse-android"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/webview"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/webview/templates" = "webview/templates"
 
 [tool.ruff]
 line-length = 100
@@ -68,4 +62,3 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"

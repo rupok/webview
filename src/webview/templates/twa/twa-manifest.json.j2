@@ -1,0 +1,38 @@
+{
+  "packageId": "{{ package }}",
+  "host": "{{ host }}",
+  "name": "{{ name }}",
+  "launcherName": "{{ name }}",
+  "display": "standalone",
+  "themeColor": "{{ theme_color }}",
+  "navigationColor": "{{ theme_color }}",
+  "navigationColorDark": "{{ theme_color }}",
+  "navigationDividerColor": "{{ theme_color }}",
+  "navigationDividerColorDark": "{{ theme_color }}",
+  "backgroundColor": "{{ background_color }}",
+  "enableNotifications": false,
+  "startUrl": "{{ start_path }}",
+  "iconUrl": "icon.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "{{ version_name }}",
+  "appVersionCode": {{ version_code }},
+  "shortcuts": [],
+  "generatorApp": "webview-cli/2.0",
+  "webManifestUrl": "{{ web_manifest_url or '' }}",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": { "enabled": false },
+    "playBilling": { "enabled": false }
+  },
+  "alphaDependencies": { "enabled": false },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "{{ url }}",
+  "minSdkVersion": {{ min_sdk }},
+  "orientation": "{{ orientation }}"
+}

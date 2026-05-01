@@ -1,12 +1,13 @@
-"""WebView — let AI view a website.
+"""WebView — turn your website into a real Android app.
 
-A small library for fetching web pages, extracting clean content, and
-querying that content with pluggable open-source LLM backends (Ollama,
-OpenAI-compatible servers, Hugging Face, or a zero-LLM extractive fallback).
+URL in, signed APK/AAB out. Three paths picked automatically:
+
+  - TWA via Bubblewrap          (recommended for PWAs)
+  - Kotlin WebView project      (works for any site)
+  - GitHub Actions workflow     (no local Android toolchain needed)
 """
 
-from webview.config import Settings, get_settings
-from webview.core import Page, view
+from webview.config import AppConfig
 
 __version__ = "2.0.0"
-__all__ = ["Page", "Settings", "__version__", "get_settings", "view"]
+__all__ = ["AppConfig", "__version__"]

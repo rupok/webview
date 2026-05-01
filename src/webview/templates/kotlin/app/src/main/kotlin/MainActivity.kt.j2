@@ -1,0 +1,124 @@
+package {{ package }}
+
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.view.View
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+
+class MainActivity : ComponentActivity() {
+
+    private lateinit var swipe: SwipeRefreshLayout
+    private lateinit var webView: WebView
+
+    @SuppressLint("SetJavaScriptEnabled")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(THEME_COLOR_LIGHT, THEME_COLOR_DARK),
+        )
+        super.onCreate(savedInstanceState)
+
+        webView = WebView(this).apply {
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                databaseEnabled = true
+                loadWithOverviewMode = true
+                useWideViewPort = true
+                mediaPlaybackRequiresUserGesture = false
+                setSupportMultipleWindows(false)
+                javaScriptCanOpenWindowsAutomatically = false
+                userAgentString = "$userAgentString {{ app_user_agent }}"
+            }
+            webViewClient = AppWebViewClient()
+            setBackgroundColor(0x00000000)
+        }
+
+        swipe = SwipeRefreshLayout(this).apply {
+            addView(webView)
+            setOnRefreshListener { webView.reload() }
+        }
+        setContentView(swipe)
+        ViewCompat.setOnApplyWindowInsetsListener(swipe) { v, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
+
+        if (savedInstanceState != null) {
+            webView.restoreState(savedInstanceState)
+        } else {
+            webView.loadUrl(intent?.data?.toString() ?: HOME_URL)
+        }
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (webView.canGoBack()) {
+                    webView.goBack()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.data?.let { webView.loadUrl(it.toString()) }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        webView.saveState(outState)
+    }
+
+    private inner class AppWebViewClient : WebViewClient() {
+        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            val url = request.url
+            return when {
+                isInScope(url) -> false
+                url.scheme == "tel" || url.scheme == "mailto" || url.scheme == "sms" -> {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, url)) }
+                    true
+                }
+                {{ 'true' if allow_external_links else 'false' }} -> false
+                else -> {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, url)) }
+                    true
+                }
+            }
+        }
+
+        override fun onPageFinished(view: WebView, url: String?) {
+            swipe.isRefreshing = false
+        }
+    }
+
+    private fun isInScope(url: Uri): Boolean {
+        if (url.scheme != "https" && url.scheme != "http") return false
+        return url.host == HOME_HOST
+    }
+
+    companion object {
+        private const val HOME_URL = "{{ url }}"
+        private const val HOME_HOST = "{{ host }}"
+        private const val THEME_COLOR_LIGHT = {{ theme_color_int }}
+        private const val THEME_COLOR_DARK = {{ theme_color_int }}
+    }
+}
